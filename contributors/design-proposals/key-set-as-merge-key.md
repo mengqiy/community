@@ -57,6 +57,7 @@ type ServiceSpec struct {
 
 We also need to introduce a new optional directive `$patchMergeKey` in the patch.
 This directive contains a list of strings which are the merge keys used in this patch.
+This directive should present in each entry in the list when using.
 
 An example patch will look like:
 ```yaml
@@ -72,7 +73,7 @@ list:
 We will use the default merge key for merging if the $patchMergeKey directive is not present in the patch.
 Otherwise, we will use the merge keys provided by the directive.
 
-*Note*: Operations will take effect on all matching items in the list.
+*Note*: Deletion operations will take effect on all matching items in the list.
 
 #### When `$patchMergeKey` contains items that are not in the patch
 
@@ -145,11 +146,8 @@ list:
 #### When `$patchMergeKey` only has part of all merge keys
 
 When `$patchMergeKey` only has part of all merge keys,
-the server will apply the patch to all the matching items.
-So an update or a deletion may apply to multiple items in the list.
-
-*Note*: In last release(1.6) implementation, update operation will apply to the first matching items.
-Delete operation will apply to all matching items.
+the server will try to use the existing part of merge keys to uniquely identify an entry in the list.
+The server will reject the patch if the existing part of merge keys actually matches more than one entry in the live list.
 
 E.g.
 foo is the default merge key.
@@ -159,55 +157,47 @@ Live list:
 ```yaml
 list:
 - foo: a
-  bar: x
-  another: 1
-- foo: a
-  bar: y
-  another: 2
+  other: 0
 - foo: b
   bar: x
+  other: 1
+- foo: b
+  bar: x
+  other: 2
 ```
 
-Patch 1:
+Patch 1 (valid):
 ```yaml
 list:
 - $patchMergeKey:
   - foo
   foo: a
-  bar: z
-  other: val
+  other: 3
 ```
 
 Result after merging patch 1:
 ```yaml
 list:
 - foo: a
-  bar: z
-  other: val
-  another: 1
-- foo: a
-  bar: z
-  other: val
-  another: 2
+  other: 3
 - foo: b
   bar: x
+  other: 1
+- foo: b
+  bar: x
+  other: 2
 ```
 
-Patch 2:
+Patch 2 (invalid):
 ```yaml
 list:
 - $patchMergeKey:
   - foo
-  $patch: delete
-  foo: a
+  foo: b
+  other: 3
 ```
 
-Result after merging patch 2:
-```yaml
-list:
-- foo: b
-  bar: x
-```
+Server will reject patch 2, since `foo: b` cannot uniquely identify an entry in the list.
 
 #### When `$patchMergeKey` has all of the merge keys
 
